@@ -7,6 +7,7 @@ import {
   Settings, 
   Terminal, 
   Cpu,
+  Code2,
   Store,
   CreditCard,
   Lock,
@@ -28,6 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const backendNavItems = [
     { icon: LayoutDashboard, label: "Command Deck", href: "/dashboard" },
+    { icon: Code2, label: "Coding Studio", href: "/studio" },
     { icon: Bot, label: "AI Agents", href: "/agents" },
     { icon: HardDrive, label: "Storage", href: "/storage" },
     { icon: Network, label: "Integrations", href: "/integrations" },

@@ -8,6 +8,7 @@ import Dashboard from "@/pages/Dashboard";
 import PublicHome from "@/pages/PublicHome";
 import Shop from "@/pages/Shop";
 import Storage from "@/pages/Storage";
+import CodingStudio from "@/pages/CodingStudio";
 
 function Router() {
   return (
@@ -19,6 +20,7 @@ function Router() {
       {/* Backend / Dashboard Routes */}
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/storage" component={Storage} />
+      <Route path="/studio" component={CodingStudio} />
       
       {/* Redirects for demo purposes */}
       <Route path="/agents" component={Dashboard} />
