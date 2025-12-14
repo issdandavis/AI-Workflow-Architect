@@ -28,7 +28,7 @@ const agents = [
 ];
 
 // Mock conversation
-const conversation = [
+const initialConversation = [
   { id: 1, agentId: "orchestrator", text: "User Request: Create a secure API endpoint for processing Stripe payments with webhook verification." },
   { id: 2, agentId: "claude", text: "I'll outline the architecture. We need a middleware for signature verification and an async handler for the webhook events to prevent timeouts." },
   { id: 3, agentId: "gpt", text: "Agreed. I'm drafting the Express route handler and the Stripe verification logic now." },
@@ -59,6 +59,32 @@ const conversation = [
 ];
 
 export default function CodingStudio() {
+  const [messages, setMessages] = useState(initialConversation);
+  const [inputValue, setInputValue] = useState("");
+
+  const handleSendMessage = () => {
+    if (!inputValue.trim()) return;
+    
+    // Add user message mock
+    const newMsg = {
+      id: messages.length + 1,
+      agentId: "orchestrator",
+      text: `User Request: ${inputValue}`,
+    };
+    
+    setMessages([...messages, newMsg]);
+    setInputValue("");
+    
+    // Simulate AI response after delay
+    setTimeout(() => {
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        agentId: "claude",
+        text: "Acknowledged. Analyzing request parameters and adjusting architecture...",
+      }]);
+    }, 1000);
+  };
+
   return (
     <Layout>
       <div className="h-[calc(100vh-140px)] flex flex-col lg:flex-row gap-6">
@@ -80,7 +106,7 @@ export default function CodingStudio() {
 
           <ScrollArea className="flex-1 glass-panel rounded-xl p-4">
             <div className="space-y-6">
-              {conversation.map((msg, idx) => {
+              {messages.map((msg, idx) => {
                 const agent = agents.find(a => a.id === msg.agentId);
                 return (
                   <motion.div 
@@ -116,10 +142,13 @@ export default function CodingStudio() {
           <div className="glass-panel p-2 rounded-xl flex items-center gap-2">
             <input 
               type="text" 
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
               placeholder="Inject instructions into the swarm..."
               className="flex-1 bg-transparent border-none outline-none text-sm px-3 py-2"
             />
-            <Button size="sm" className="bg-primary/20 hover:bg-primary/30 text-primary">
+            <Button size="sm" onClick={handleSendMessage} className="bg-primary/20 hover:bg-primary/30 text-primary">
               <Sparkles className="w-4 h-4 mr-2" /> Instruct
             </Button>
           </div>
