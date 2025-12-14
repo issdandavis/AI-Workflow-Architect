@@ -33,6 +33,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/storage" component={Storage} />
       <Route path="/studio" component={CodingStudio} />
+      <Route path="/coding-studio" component={CodingStudio} />
       <Route path="/settings" component={Settings} />
       <Route path="/integrations" component={Integrations} />
       <Route path="/agents" component={Agents} />

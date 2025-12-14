@@ -11,6 +11,7 @@ import { createMcpRouter } from "./mcp";
 import { getZapierMcpClient, testZapierMcpConnection } from "./services/zapierMcpClient";
 import { z } from "zod";
 import { insertUserSchema, insertOrgSchema, insertProjectSchema, insertIntegrationSchema, insertMemoryItemSchema } from "@shared/schema";
+import { getProviderAdapter } from "./services/providerAdapters";
 import crypto from "crypto";
 
 const VERSION = "1.0.0";
@@ -1522,6 +1523,74 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  // ===== CODE ASSISTANT ROUTES =====
+
+  app.post("/api/code-assistant/generate", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { prompt, provider, model, conversationHistory } = z.object({
+        prompt: z.string().min(1, "Prompt is required").max(10000),
+        provider: z.enum(["openai", "anthropic", "xai", "perplexity", "google"]),
+        model: z.string().optional(),
+        conversationHistory: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string(),
+        })).optional(),
+      }).parse(req.body);
+
+      const adapter = getProviderAdapter(provider);
+      
+      let fullPrompt = prompt;
+      if (conversationHistory && conversationHistory.length > 0) {
+        const historyText = conversationHistory
+          .map(msg => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+          .join("\n\n");
+        fullPrompt = `Previous conversation:\n${historyText}\n\nUser: ${prompt}`;
+      }
+
+      const systemPrompt = `You are an expert coding assistant. When asked to generate code, provide clean, well-commented, production-ready code. Format code blocks properly and explain your implementation choices briefly.\n\n${fullPrompt}`;
+
+      const result = await adapter.call(systemPrompt, model || "");
+
+      if (!result.success) {
+        return res.status(400).json({ 
+          error: result.error || "Failed to generate code",
+          provider,
+        });
+      }
+
+      await storage.createAuditLog({
+        orgId: req.session.orgId!,
+        userId: req.session.userId || null,
+        action: "code_assistant_generate",
+        target: provider,
+        detailJson: { 
+          promptLength: prompt.length,
+          model: model || "default",
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
+        },
+      });
+
+      res.json({
+        content: result.content,
+        usage: result.usage ? {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+        } : undefined,
+        provider,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: error.errors.map(e => e.message).join(", "),
+        });
+      }
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "An unexpected error occurred",
+      });
     }
   });
 
