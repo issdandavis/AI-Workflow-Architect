@@ -63,7 +63,7 @@ export function useAssistant(): UseAssistantReturn {
         },
         body: JSON.stringify({
           message: content.trim(),
-          pageContext,
+          context: pageContext,
           conversationHistory: messages.map((m) => ({
             role: m.role,
             content: m.content,
