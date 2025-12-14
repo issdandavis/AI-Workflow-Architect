@@ -67,6 +67,7 @@ export interface IStorage {
   getBudget(orgId: string, period: "daily" | "monthly"): Promise<Budget | undefined>;
   createBudget(budget: InsertBudget): Promise<Budget>;
   updateBudgetSpent(id: string, amount: string): Promise<void>;
+  updateBudgetLimit(id: string, limitUsd: string): Promise<void>;
   resetBudgetSpent(id: string): Promise<void>;
 
   // API Keys
@@ -295,6 +296,16 @@ export class DbStorage implements IStorage {
       .update(budgets)
       .set({
         spentUsd: sql`${budgets.spentUsd} + ${amount}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(budgets.id, id));
+  }
+
+  async updateBudgetLimit(id: string, limitUsd: string): Promise<void> {
+    await db
+      .update(budgets)
+      .set({
+        limitUsd,
         updatedAt: new Date(),
       })
       .where(eq(budgets.id, id));

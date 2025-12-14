@@ -14,7 +14,8 @@ import {
   HardDrive,
   Cloud,
   LogOut,
-  Globe
+  Globe,
+  BarChart3
 } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_abstract_neural_network_background_for_ai_dashboard.png";
 
@@ -33,6 +34,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { icon: Bot, label: "AI Agents", href: "/agents" },
     { icon: HardDrive, label: "Storage", href: "/storage" },
     { icon: Network, label: "Integrations", href: "/integrations" },
+    { icon: BarChart3, label: "Usage & Costs", href: "/usage" },
     { icon: Settings, label: "Settings", href: "/settings" },
   ];
 

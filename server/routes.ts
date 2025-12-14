@@ -841,5 +841,135 @@ export async function registerRoutes(
     }
   });
 
+  // ===== USAGE DASHBOARD ROUTES =====
+
+  app.get("/api/usage", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const orgId = req.session.orgId;
+      if (!orgId) {
+        return res.status(400).json({ error: "No organization set" });
+      }
+
+      const days = parseInt(req.query.days as string) || 30;
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+
+      const records = await storage.getUsageRecords(orgId, since);
+      const summary = await storage.getUsageSummary(orgId, since);
+
+      const byProvider: Record<string, { tokens: number; costUsd: number }> = {};
+      const dailyMap: Record<string, { tokens: number; cost: number }> = {};
+
+      for (const record of records) {
+        if (!byProvider[record.provider]) {
+          byProvider[record.provider] = { tokens: 0, costUsd: 0 };
+        }
+        byProvider[record.provider].tokens += record.inputTokens + record.outputTokens;
+        byProvider[record.provider].costUsd += parseFloat(record.estimatedCostUsd || "0");
+
+        const dateKey = new Date(record.createdAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+        if (!dailyMap[dateKey]) {
+          dailyMap[dateKey] = { tokens: 0, cost: 0 };
+        }
+        dailyMap[dateKey].tokens += record.inputTokens + record.outputTokens;
+        dailyMap[dateKey].cost += parseFloat(record.estimatedCostUsd || "0");
+      }
+
+      const dailyUsage = Object.entries(dailyMap)
+        .map(([date, data]) => ({ date, ...data }))
+        .reverse();
+
+      res.json({
+        summary: {
+          totalTokens: summary.totalTokens,
+          totalCostUsd: summary.totalCostUsd,
+          periodDays: days,
+        },
+        byProvider,
+        dailyUsage,
+        recentRecords: records.slice(0, 50),
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to get usage" });
+    }
+  });
+
+  // ===== BUDGET MANAGEMENT ROUTES =====
+
+  app.get("/api/budgets", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const orgId = req.session.orgId;
+      if (!orgId) {
+        return res.status(400).json({ error: "No organization set" });
+      }
+
+      const monthlyBudget = await storage.getBudget(orgId, "monthly");
+      const dailyBudget = await storage.getBudget(orgId, "daily");
+
+      const budgets = [];
+      if (monthlyBudget) {
+        budgets.push({
+          ...monthlyBudget,
+          limitUsd: parseFloat(monthlyBudget.limitUsd),
+          spentUsd: parseFloat(monthlyBudget.spentUsd),
+        });
+      }
+      if (dailyBudget) {
+        budgets.push({
+          ...dailyBudget,
+          limitUsd: parseFloat(dailyBudget.limitUsd),
+          spentUsd: parseFloat(dailyBudget.spentUsd),
+        });
+      }
+
+      res.json({ budgets });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to get budgets" });
+    }
+  });
+
+  app.post("/api/budgets", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const orgId = req.session.orgId;
+      if (!orgId) {
+        return res.status(400).json({ error: "No organization set" });
+      }
+
+      const { period, limitUsd } = z.object({
+        period: z.enum(["daily", "monthly"]),
+        limitUsd: z.number().positive(),
+      }).parse(req.body);
+
+      const existingBudget = await storage.getBudget(orgId, period);
+
+      if (existingBudget) {
+        await storage.updateBudgetLimit(existingBudget.id, limitUsd.toString());
+        res.json({ success: true, updated: true });
+      } else {
+        const budget = await storage.createBudget({
+          orgId,
+          period,
+          limitUsd: limitUsd.toString(),
+          spentUsd: "0",
+          updatedAt: new Date(),
+        });
+        res.json({ success: true, budget });
+      }
+
+      await storage.createAuditLog({
+        orgId,
+        userId: req.session.userId || null,
+        action: "budget_updated",
+        target: period,
+        detailJson: { limitUsd },
+      });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save budget" });
+    }
+  });
+
   return httpServer;
 }
