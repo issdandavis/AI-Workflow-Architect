@@ -218,10 +218,10 @@ export class PerplexityAdapter extends BaseProviderAdapter {
   }
 
   async call(prompt: string, model: string): Promise<ProviderResponse> {
-    if (!process.env.PERPLEXITY_API_KEY) {
+    if (!this.apiKey) {
       return {
         success: false,
-        error: "Perplexity API key not configured. Please add PERPLEXITY_API_KEY in Secrets.",
+        error: "Perplexity API key not configured. Please add the API key in Settings > API Keys.",
       };
     }
 
@@ -230,7 +230,7 @@ export class PerplexityAdapter extends BaseProviderAdapter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          "Authorization": `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
           model: model || "sonar",
@@ -273,16 +273,16 @@ export class GeminiAdapter extends BaseProviderAdapter {
   }
 
   async call(prompt: string, model: string): Promise<ProviderResponse> {
-    if (!process.env.GOOGLE_API_KEY) {
+    if (!this.apiKey) {
       return {
         success: false,
-        error: "Google API key not configured. Please add GOOGLE_API_KEY in Secrets.",
+        error: "Google API key not configured. Please add the API key in Settings > API Keys.",
       };
     }
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model || "gemini-2.0-flash"}:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model || "gemini-2.0-flash"}:generateContent?key=${this.apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -322,8 +322,9 @@ export class GeminiAdapter extends BaseProviderAdapter {
 }
 
 // Factory to get the right adapter
-export function getProviderAdapter(provider: string): ProviderAdapter {
-  const apiKeys = {
+// If apiKey is provided, use it; otherwise fall back to process.env
+export function getProviderAdapter(provider: string, apiKey?: string): ProviderAdapter {
+  const envApiKeys = {
     openai: process.env.OPENAI_API_KEY,
     anthropic: process.env.ANTHROPIC_API_KEY,
     xai: process.env.XAI_API_KEY,
@@ -333,16 +334,16 @@ export function getProviderAdapter(provider: string): ProviderAdapter {
 
   switch (provider.toLowerCase()) {
     case "openai":
-      return new OpenAIAdapter(apiKeys.openai);
+      return new OpenAIAdapter(apiKey || envApiKeys.openai);
     case "anthropic":
-      return new AnthropicAdapter(apiKeys.anthropic);
+      return new AnthropicAdapter(apiKey || envApiKeys.anthropic);
     case "xai":
-      return new XAIAdapter(apiKeys.xai);
+      return new XAIAdapter(apiKey || envApiKeys.xai);
     case "perplexity":
-      return new PerplexityAdapter(apiKeys.perplexity);
+      return new PerplexityAdapter(apiKey || envApiKeys.perplexity);
     case "google":
     case "gemini":
-      return new GeminiAdapter(apiKeys.google);
+      return new GeminiAdapter(apiKey || envApiKeys.google);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }

@@ -117,6 +117,7 @@ class RetryService {
     provider: string,
     prompt: string,
     model: string,
+    apiKey?: string,
     onRetry?: (attempt: number, error: string, nextProvider?: string) => void
   ): Promise<ProviderResponse & { usedProvider: string; attempts: number }> {
     const normalizedProvider = this.normalizeProvider(provider);
@@ -140,7 +141,7 @@ class RetryService {
         totalAttempts++;
 
         try {
-          const adapter = getProviderAdapter(currentProvider);
+          const adapter = getProviderAdapter(currentProvider, apiKey);
           const response = await adapter.call(prompt, model);
 
           if (response.success) {

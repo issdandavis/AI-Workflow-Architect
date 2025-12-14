@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { storage } from "../storage";
 import { retryService } from "./retryService";
 import { trackCost } from "../middleware/costGovernor";
+import { getUserCredential } from "./vault";
 import type { InsertDecisionTrace } from "@shared/schema";
 
 export interface AgentHandoff {
@@ -219,11 +220,15 @@ class OrchestratorQueue extends EventEmitter {
       message: `Calling ${run.provider} with model ${run.model} (with retry/fallback)...`,
     });
 
+    // Fetch user's stored API key for the provider (decrypt at moment of use)
+    const apiKey = run.userId ? await getUserCredential(run.userId, run.provider) : null;
+
     let retryStep = 0;
     const response = await retryService.callWithRetry(
       run.provider,
       task.goal,
       run.model,
+      apiKey || undefined,
       async (attempt, error, nextProvider) => {
         retryStep++;
         if (nextProvider) {
