@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword, requireAuth, attachUser, validateApiKey }
 import { authLimiter, apiLimiter, agentLimiter } from "./middleware/rateLimiter";
 import { checkBudget } from "./middleware/costGovernor";
 import { orchestratorQueue } from "./services/orchestrator";
+import { retryService } from "./services/retryService";
 import { processGuideAgentRequest } from "./services/guideAgent";
 import { createMcpRouter } from "./mcp";
 import { getZapierMcpClient, testZapierMcpConnection } from "./services/zapierMcpClient";
@@ -968,6 +969,54 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to save budget" });
+    }
+  });
+
+  // ===== CIRCUIT BREAKER STATUS ROUTES =====
+
+  app.get("/api/circuits", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const status = retryService.getCircuitStatus();
+      res.json({ circuits: status });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to get circuit status" });
+    }
+  });
+
+  app.post("/api/circuits/reset", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !["owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const validProviders = ["openai", "anthropic", "google", "gemini", "perplexity", "xai"];
+      const { provider } = req.body;
+      
+      if (provider && !validProviders.includes(provider.toLowerCase())) {
+        return res.status(400).json({ error: `Invalid provider. Valid: ${validProviders.join(", ")}` });
+      }
+
+      if (provider) {
+        retryService.resetCircuit(provider.toLowerCase());
+      } else {
+        retryService.resetAllCircuits();
+      }
+
+      const orgId = req.session.orgId;
+      if (orgId) {
+        await storage.createAuditLog({
+          orgId,
+          userId: req.session.userId || null,
+          action: "circuit_reset",
+          target: provider || "all",
+          detailJson: {},
+        });
+      }
+
+      res.json({ success: true, provider: provider || "all" });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to reset circuit" });
     }
   });
 

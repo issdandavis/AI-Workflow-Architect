@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { storage } from "../storage";
-import { getProviderAdapter } from "./providerAdapters";
+import { retryService } from "./retryService";
 import { trackCost } from "../middleware/costGovernor";
 
 export interface AgentHandoff {
@@ -89,19 +89,39 @@ class OrchestratorQueue extends EventEmitter {
       content: task.goal,
     });
 
-    // Get provider adapter
-    const adapter = getProviderAdapter(run.provider);
-    
     this.emit("log", task.runId, {
       type: "info",
-      message: `Calling ${adapter.name} with model ${run.model}...`,
+      message: `Calling ${run.provider} with model ${run.model} (with retry/fallback)...`,
     });
 
-    // Call the provider
-    const response = await adapter.call(task.goal, run.model);
+    const response = await retryService.callWithRetry(
+      run.provider,
+      task.goal,
+      run.model,
+      (attempt, error, nextProvider) => {
+        if (nextProvider) {
+          this.emit("log", task.runId, {
+            type: "warning",
+            message: `Provider failed, falling back to ${nextProvider}. Error: ${error}`,
+          });
+        } else {
+          this.emit("log", task.runId, {
+            type: "warning",
+            message: `Retry attempt ${attempt}. Error: ${error}`,
+          });
+        }
+      }
+    );
 
     if (!response.success) {
       throw new Error(response.error || "Provider call failed");
+    }
+
+    if (response.usedProvider !== run.provider) {
+      this.emit("log", task.runId, {
+        type: "info",
+        message: `Used fallback provider: ${response.usedProvider} (${response.attempts} total attempts)`,
+      });
     }
 
     // Save the response
@@ -112,13 +132,14 @@ class OrchestratorQueue extends EventEmitter {
       content: response.content || "",
     });
 
-    // Update run with output and cost
     const costEstimate = response.usage?.costEstimate || "0";
     await storage.updateAgentRun(task.runId, {
       status: "completed",
       outputJson: {
         content: response.content,
         usage: response.usage,
+        usedProvider: response.usedProvider,
+        attempts: response.attempts,
       },
       costEstimate,
     });
@@ -128,18 +149,42 @@ class OrchestratorQueue extends EventEmitter {
       await trackCost(task.orgId, costEstimate);
     }
 
+    // Create usage record with actual provider used (for analytics)
+    const org = await storage.getOrg(task.orgId);
+    if (org) {
+      await storage.createUsageRecord({
+        orgId: task.orgId,
+        userId: org.ownerUserId,
+        provider: response.usedProvider,
+        model: run.model,
+        inputTokens: response.usage?.inputTokens || 0,
+        outputTokens: response.usage?.outputTokens || 0,
+        estimatedCostUsd: costEstimate,
+        metadata: {
+          agentRunId: task.runId,
+          originalProvider: run.provider,
+          attempts: response.attempts,
+        },
+      });
+    }
+
     this.emit("log", task.runId, {
       type: "success",
       message: `Agent run completed. Cost: $${costEstimate}`,
     });
 
-    // Audit log
     await storage.createAuditLog({
       orgId: task.orgId,
       userId: null,
       action: "agent_run_completed",
       target: task.runId,
-      detailJson: { provider: run.provider, model: run.model, costEstimate },
+      detailJson: { 
+        provider: run.provider, 
+        usedProvider: response.usedProvider,
+        model: run.model, 
+        costEstimate,
+        attempts: response.attempts,
+      },
     });
   }
 }
