@@ -8,7 +8,13 @@ import { createServer } from "http";
 
 // Environment validation
 const requiredEnvVars = ["DATABASE_URL"];
-const productionEnvVars = ["SESSION_SECRET", "APP_ORIGIN"];
+const productionEnvVars = ["SESSION_SECRET"];
+
+// Auto-detect APP_ORIGIN from Replit deployment domains if not set
+if (!process.env.APP_ORIGIN && process.env.REPLIT_DOMAINS) {
+  const domains = process.env.REPLIT_DOMAINS.split(",");
+  process.env.APP_ORIGIN = `https://${domains[0]}`;
+}
 
 if (process.env.NODE_ENV === "production") {
   for (const envVar of [...requiredEnvVars, ...productionEnvVars]) {
