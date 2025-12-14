@@ -1549,6 +1549,124 @@ export async function registerRoutes(
     }
   });
 
+  // ===== STRIPE ROUTES =====
+
+  app.get("/api/stripe/status", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { isStripeConnected } = await import("./services/stripeClient");
+      const connected = await isStripeConnected();
+      res.json({ connected });
+    } catch (error) {
+      res.json({ connected: false });
+    }
+  });
+
+  app.get("/api/stripe/publishable-key", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { getStripePublishableKey } = await import("./services/stripeClient");
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to get publishable key" });
+    }
+  });
+
+  app.get("/api/stripe/products", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { listStripeProducts } = await import("./services/stripeClient");
+      const products = await listStripeProducts();
+      res.json({ products });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to list products" });
+    }
+  });
+
+  app.get("/api/stripe/prices", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { listStripePrices } = await import("./services/stripeClient");
+      const productId = req.query.productId as string | undefined;
+      const prices = await listStripePrices(productId);
+      res.json({ prices });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to list prices" });
+    }
+  });
+
+  app.post("/api/stripe/checkout", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { priceId, customerId, mode } = z.object({
+        priceId: z.string().min(1),
+        customerId: z.string().min(1),
+        mode: z.enum(["subscription", "payment"]).default("subscription"),
+      }).parse(req.body);
+
+      const { createStripeCheckoutSession } = await import("./services/stripeClient");
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000'}`;
+      const session = await createStripeCheckoutSession(
+        customerId,
+        priceId,
+        `${baseUrl}/checkout/success`,
+        `${baseUrl}/checkout/cancel`,
+        mode
+      );
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to create checkout session" });
+    }
+  });
+
+  app.post("/api/stripe/customer", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { email, metadata } = z.object({
+        email: z.string().email(),
+        metadata: z.record(z.string()).optional(),
+      }).parse(req.body);
+
+      const { createStripeCustomer } = await import("./services/stripeClient");
+      const customer = await createStripeCustomer(email, metadata);
+      res.json({ customer });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to create customer" });
+    }
+  });
+
+  app.post("/api/stripe/portal", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { customerId } = z.object({
+        customerId: z.string().min(1),
+      }).parse(req.body);
+
+      const { createStripePortalSession } = await import("./services/stripeClient");
+      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000'}`;
+      const session = await createStripePortalSession(customerId, `${baseUrl}/settings`);
+      res.json({ url: session.url });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to create portal session" });
+    }
+  });
+
+  app.get("/api/stripe/subscription/:subscriptionId", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { subscriptionId } = req.params;
+      const { getStripeSubscription } = await import("./services/stripeClient");
+      const subscription = await getStripeSubscription(subscriptionId);
+      res.json({ subscription });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to get subscription" });
+    }
+  });
+
+  app.delete("/api/stripe/subscription/:subscriptionId", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { subscriptionId } = req.params;
+      const { cancelStripeSubscription } = await import("./services/stripeClient");
+      const subscription = await cancelStripeSubscription(subscriptionId);
+      res.json({ subscription });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to cancel subscription" });
+    }
+  });
+
   // ===== ROUNDTABLE ROUTES =====
 
   // Get available AI providers
