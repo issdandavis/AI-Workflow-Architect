@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -16,6 +16,8 @@ import Agents from "@/pages/Agents";
 import Usage from "@/pages/Usage";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+
+const PUBLIC_ROUTES = ["/", "/shop", "/login", "/signup"];
 
 function Router() {
   return (
@@ -40,13 +42,24 @@ function Router() {
   );
 }
 
+function ConditionalAssistant() {
+  const [location] = useLocation();
+  const isPublicRoute = PUBLIC_ROUTES.includes(location);
+  
+  if (isPublicRoute) {
+    return null;
+  }
+  
+  return <AssistantPanel />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Router />
-        <AssistantPanel />
+        <ConditionalAssistant />
       </TooltipProvider>
     </QueryClientProvider>
   );

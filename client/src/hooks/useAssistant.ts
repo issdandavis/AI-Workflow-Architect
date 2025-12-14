@@ -61,6 +61,7 @@ export function useAssistant(): UseAssistantReturn {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           message: content.trim(),
           context: pageContext,
