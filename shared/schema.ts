@@ -95,7 +95,7 @@ export type SecretRef = typeof secretsRef.$inferSelect;
 export const agentRuns = pgTable("agent_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  status: text("status", { enum: ["queued", "running", "completed", "failed", "cancelled"] }).notNull().default("queued"),
+  status: text("status", { enum: ["queued", "running", "completed", "failed", "cancelled", "awaiting_approval"] }).notNull().default("queued"),
   model: text("model").notNull(),
   provider: text("provider").notNull(),
   inputJson: jsonb("input_json"),
@@ -262,6 +262,12 @@ export const decisionTraces = pgTable("decision_traces", {
   alternatives: jsonb("alternatives"),
   contextUsed: jsonb("context_used"),
   durationMs: integer("duration_ms"),
+  approvalStatus: text("approval_status", { 
+    enum: ["not_required", "pending", "approved", "rejected"] 
+  }).notNull().default("not_required"),
+  approvedBy: varchar("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

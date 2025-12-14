@@ -94,6 +94,10 @@ export interface IStorage {
   // Decision Traces
   createDecisionTrace(trace: InsertDecisionTrace): Promise<DecisionTrace>;
   getDecisionTraces(agentRunId: string): Promise<DecisionTrace[]>;
+  getDecisionTrace(id: string): Promise<DecisionTrace | undefined>;
+  getPendingApprovals(orgId?: string): Promise<DecisionTrace[]>;
+  approveDecision(id: string, userId: string): Promise<DecisionTrace | undefined>;
+  rejectDecision(id: string, userId: string, reason: string): Promise<DecisionTrace | undefined>;
 }
 
 export class DbStorage implements IStorage {
@@ -451,6 +455,55 @@ export class DbStorage implements IStorage {
       .from(decisionTraces)
       .where(eq(decisionTraces.agentRunId, agentRunId))
       .orderBy(decisionTraces.stepNumber);
+  }
+
+  async getDecisionTrace(id: string): Promise<DecisionTrace | undefined> {
+    const [trace] = await db.select().from(decisionTraces).where(eq(decisionTraces.id, id));
+    return trace;
+  }
+
+  async getPendingApprovals(orgId?: string): Promise<DecisionTrace[]> {
+    const pendingTraces = await db
+      .select()
+      .from(decisionTraces)
+      .innerJoin(agentRuns, eq(decisionTraces.agentRunId, agentRuns.id))
+      .innerJoin(projects, eq(agentRuns.projectId, projects.id))
+      .where(eq(decisionTraces.approvalStatus, "pending"))
+      .orderBy(desc(decisionTraces.createdAt));
+    
+    if (orgId) {
+      return pendingTraces
+        .filter((row) => row.projects.orgId === orgId)
+        .map((row) => row.decision_traces);
+    }
+    return pendingTraces.map((row) => row.decision_traces);
+  }
+
+  async approveDecision(id: string, userId: string): Promise<DecisionTrace | undefined> {
+    const [updated] = await db
+      .update(decisionTraces)
+      .set({
+        approvalStatus: "approved",
+        approvedBy: userId,
+        approvedAt: new Date(),
+      })
+      .where(eq(decisionTraces.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectDecision(id: string, userId: string, reason: string): Promise<DecisionTrace | undefined> {
+    const [updated] = await db
+      .update(decisionTraces)
+      .set({
+        approvalStatus: "rejected",
+        approvedBy: userId,
+        approvedAt: new Date(),
+        rejectionReason: reason,
+      })
+      .where(eq(decisionTraces.id, id))
+      .returning();
+    return updated;
   }
 }
 

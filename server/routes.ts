@@ -476,6 +476,111 @@ export async function registerRoutes(
     }
   });
 
+  // ===== APPROVAL ROUTES =====
+
+  app.get("/api/approvals/pending", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const orgId = req.session.orgId;
+      if (!orgId) {
+        return res.status(403).json({ error: "No organization context" });
+      }
+
+      const pendingApprovals = await storage.getPendingApprovals(orgId);
+      res.json(pendingApprovals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch pending approvals" });
+    }
+  });
+
+  app.post("/api/approvals/:traceId/approve", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { traceId } = req.params;
+      const userId = req.session.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const trace = await storage.getDecisionTrace(traceId);
+      if (!trace) {
+        return res.status(404).json({ error: "Decision trace not found" });
+      }
+
+      if (trace.approvalStatus !== "pending") {
+        return res.status(400).json({ error: "Decision is not pending approval" });
+      }
+
+      const updated = await storage.approveDecision(traceId, userId);
+      
+      // Resume the agent run if it was awaiting approval
+      const agentRun = await storage.getAgentRun(trace.agentRunId);
+      if (agentRun && agentRun.status === "awaiting_approval") {
+        await storage.updateAgentRun(trace.agentRunId, { status: "running" });
+        orchestratorQueue.emit("approval_granted", trace.agentRunId);
+      }
+
+      await storage.createAuditLog({
+        orgId: req.session.orgId!,
+        userId,
+        action: "decision_approved",
+        target: traceId,
+        detailJson: { decision: trace.decision, agentRunId: trace.agentRunId },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to approve decision" });
+    }
+  });
+
+  app.post("/api/approvals/:traceId/reject", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { traceId } = req.params;
+      const { reason } = z.object({
+        reason: z.string().min(1, "Rejection reason is required"),
+      }).parse(req.body);
+      
+      const userId = req.session.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const trace = await storage.getDecisionTrace(traceId);
+      if (!trace) {
+        return res.status(404).json({ error: "Decision trace not found" });
+      }
+
+      if (trace.approvalStatus !== "pending") {
+        return res.status(400).json({ error: "Decision is not pending approval" });
+      }
+
+      const updated = await storage.rejectDecision(traceId, userId, reason);
+      
+      // Cancel the agent run if it was awaiting approval
+      const agentRun = await storage.getAgentRun(trace.agentRunId);
+      if (agentRun && agentRun.status === "awaiting_approval") {
+        await storage.updateAgentRun(trace.agentRunId, { 
+          status: "cancelled",
+          outputJson: { error: `Decision rejected: ${reason}` },
+        });
+        orchestratorQueue.emit("approval_rejected", trace.agentRunId, reason);
+      }
+
+      await storage.createAuditLog({
+        orgId: req.session.orgId!,
+        userId,
+        action: "decision_rejected",
+        target: traceId,
+        detailJson: { decision: trace.decision, reason, agentRunId: trace.agentRunId },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reject decision" });
+    }
+  });
+
   // ===== MEMORY ROUTES =====
 
   app.post("/api/memory/add", requireAuth, apiLimiter, async (req: Request, res: Response) => {

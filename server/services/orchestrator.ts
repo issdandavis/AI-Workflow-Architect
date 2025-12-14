@@ -23,12 +23,33 @@ export interface AgentTask {
 
 type StepType = InsertDecisionTrace["stepType"];
 
+const CONFIDENCE_THRESHOLD = 0.7;
+
 class OrchestratorQueue extends EventEmitter {
   private queue: AgentTask[] = [];
   private processing = false;
   private concurrency = 2;
   private activeCount = 0;
   private stepCounters: Map<string, number> = new Map();
+  private pendingApprovalResolvers: Map<string, { resolve: () => void; reject: (reason: string) => void }> = new Map();
+
+  constructor() {
+    super();
+    this.on("approval_granted", (runId: string) => {
+      const resolver = this.pendingApprovalResolvers.get(runId);
+      if (resolver) {
+        resolver.resolve();
+        this.pendingApprovalResolvers.delete(runId);
+      }
+    });
+    this.on("approval_rejected", (runId: string, reason: string) => {
+      const resolver = this.pendingApprovalResolvers.get(runId);
+      if (resolver) {
+        resolver.reject(reason);
+        this.pendingApprovalResolvers.delete(runId);
+      }
+    });
+  }
 
   private async traceDecision(
     runId: string,
@@ -40,28 +61,60 @@ class OrchestratorQueue extends EventEmitter {
       alternatives?: unknown[];
       contextUsed?: unknown;
       startTime?: number;
+      requireApproval?: boolean;
     }
-  ): Promise<void> {
+  ): Promise<{ traceId: string; requiresApproval: boolean }> {
     const stepNumber = (this.stepCounters.get(runId) || 0) + 1;
     this.stepCounters.set(runId, stepNumber);
 
     const durationMs = options?.startTime ? Date.now() - options.startTime : undefined;
+    const confidence = options?.confidence ?? 1.0;
+    const requiresApproval = options?.requireApproval ?? (confidence < CONFIDENCE_THRESHOLD);
 
     try {
-      await storage.createDecisionTrace({
+      const trace = await storage.createDecisionTrace({
         agentRunId: runId,
         stepNumber,
         stepType,
         decision,
         reasoning,
-        confidence: options?.confidence?.toString(),
+        confidence: confidence.toString(),
         alternatives: options?.alternatives,
         contextUsed: options?.contextUsed,
         durationMs,
+        approvalStatus: requiresApproval ? "pending" : "not_required",
       });
+      return { traceId: trace.id, requiresApproval };
     } catch (error) {
       console.error("Failed to log decision trace:", error);
+      return { traceId: "", requiresApproval: false };
     }
+  }
+
+  private async waitForApproval(runId: string, traceId: string, decision: string): Promise<void> {
+    this.emit("log", runId, {
+      type: "warning",
+      message: `Low confidence decision requires approval: "${decision}"`,
+    });
+
+    await storage.updateAgentRun(runId, { status: "awaiting_approval" });
+
+    return new Promise((resolve, reject) => {
+      this.pendingApprovalResolvers.set(runId, { resolve, reject });
+      
+      const timeout = setTimeout(() => {
+        if (this.pendingApprovalResolvers.has(runId)) {
+          this.pendingApprovalResolvers.delete(runId);
+          reject("Approval timeout - no response within 5 minutes");
+        }
+      }, 5 * 60 * 1000);
+
+      const cleanup = () => clearTimeout(timeout);
+      this.pendingApprovalResolvers.set(runId, {
+        resolve: () => { cleanup(); resolve(); },
+        reject: (reason: string) => { cleanup(); reject(new Error(reason)); },
+      });
+    });
   }
 
   enqueue(task: AgentTask) {
@@ -120,7 +173,7 @@ class OrchestratorQueue extends EventEmitter {
       message: `Starting agent run with ${run.provider} (${run.model})`,
     });
 
-    await this.traceDecision(
+    const providerTrace = await this.traceDecision(
       task.runId,
       "provider_selection",
       `Selected ${run.provider} with model ${run.model}`,
@@ -133,6 +186,11 @@ class OrchestratorQueue extends EventEmitter {
       }
     );
 
+    if (providerTrace.requiresApproval) {
+      await this.waitForApproval(task.runId, providerTrace.traceId, `Selected ${run.provider} with model ${run.model}`);
+      this.emit("log", task.runId, { type: "info", message: "Approval granted, continuing..." });
+    }
+
     await storage.updateAgentRun(task.runId, { status: "running" });
 
     // Create initial message
@@ -143,13 +201,18 @@ class OrchestratorQueue extends EventEmitter {
       content: task.goal,
     });
 
-    await this.traceDecision(
+    const contextTrace = await this.traceDecision(
       task.runId,
       "context_analysis",
       "Analyzed user goal and prepared request",
       `Parsed user goal: "${task.goal.substring(0, 100)}${task.goal.length > 100 ? '...' : ''}". Prepared message for ${run.provider}.`,
       { confidence: 0.9, contextUsed: { goalLength: task.goal.length, mode: task.mode } }
     );
+
+    if (contextTrace.requiresApproval) {
+      await this.waitForApproval(task.runId, contextTrace.traceId, "Analyzed user goal and prepared request");
+      this.emit("log", task.runId, { type: "info", message: "Approval granted, continuing..." });
+    }
 
     this.emit("log", task.runId, {
       type: "info",
