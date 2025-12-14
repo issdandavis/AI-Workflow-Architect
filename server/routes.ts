@@ -1352,6 +1352,90 @@ export async function registerRoutes(
     }
   });
 
+  // ===== ONEDRIVE INTEGRATION ROUTES =====
+
+  app.get("/api/onedrive/status", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { isOneDriveConnected } = await import("./services/oneDriveClient");
+      const connected = await isOneDriveConnected();
+      res.json({ connected });
+    } catch (error) {
+      res.json({ connected: false });
+    }
+  });
+
+  app.get("/api/onedrive/user", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { getOneDriveUser } = await import("./services/oneDriveClient");
+      const user = await getOneDriveUser();
+      res.json({ user });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "OneDrive not connected" });
+    }
+  });
+
+  app.get("/api/onedrive/files", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { folderId, pageSize } = z.object({
+        folderId: z.string().optional(),
+        pageSize: z.coerce.number().optional().default(20),
+      }).parse(req.query);
+
+      const { listOneDriveFiles } = await import("./services/oneDriveClient");
+      const files = await listOneDriveFiles(folderId, pageSize);
+      res.json({ files });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to list files" });
+    }
+  });
+
+  app.get("/api/onedrive/file/:fileId", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { fileId } = req.params;
+      const { getOneDriveFile } = await import("./services/oneDriveClient");
+      const file = await getOneDriveFile(fileId);
+      res.json({ file });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to get file" });
+    }
+  });
+
+  app.get("/api/onedrive/quota", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { getOneDriveStorageQuota } = await import("./services/oneDriveClient");
+      const quota = await getOneDriveStorageQuota();
+      res.json({ quota });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to get quota" });
+    }
+  });
+
+  app.post("/api/onedrive/folder", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { name, parentFolderId } = z.object({
+        name: z.string().min(1),
+        parentFolderId: z.string().optional(),
+      }).parse(req.body);
+
+      const { createOneDriveFolder } = await import("./services/oneDriveClient");
+      const folder = await createOneDriveFolder(name, parentFolderId);
+      res.json({ folder });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to create folder" });
+    }
+  });
+
+  app.delete("/api/onedrive/file/:fileId", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { fileId } = req.params;
+      const { deleteOneDriveFile } = await import("./services/oneDriveClient");
+      await deleteOneDriveFile(fileId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Failed to delete file" });
+    }
+  });
+
   // ===== ROUNDTABLE ROUTES =====
 
   // Get available AI providers
@@ -1388,7 +1472,7 @@ export async function registerRoutes(
           (providers) => providers.every(p => validProviders.includes(p)),
           { message: "Invalid provider specified" }
         ),
-        orchestrationMode: z.enum(["round-robin", "free-form", "moderated"]).default("round-robin"),
+        orchestrationMode: z.enum(["round_robin", "topic_based", "free_form"]).default("round_robin"),
         maxTurns: z.number().min(1).max(100).default(20),
         projectId: z.string().optional(),
       }).parse(req.body);
