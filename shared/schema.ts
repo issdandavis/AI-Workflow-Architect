@@ -184,3 +184,20 @@ export const insertBudgetSchema = createInsertSchema(budgets).omit({
 
 export type InsertBudget = z.infer<typeof insertBudgetSchema>;
 export type Budget = typeof budgets.$inferSelect;
+
+// API Keys for external integrations (Zapier, etc)
+export const apiKeys = pgTable("api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: varchar("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+export type ApiKey = typeof apiKeys.$inferSelect;

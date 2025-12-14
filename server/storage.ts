@@ -10,6 +10,7 @@ import {
   memoryItems, type MemoryItem, type InsertMemoryItem,
   auditLog, type AuditLog, type InsertAuditLog,
   budgets, type Budget, type InsertBudget,
+  apiKeys, type ApiKey, type InsertApiKey,
 } from "@shared/schema";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 
@@ -65,6 +66,11 @@ export interface IStorage {
   createBudget(budget: InsertBudget): Promise<Budget>;
   updateBudgetSpent(id: string, amount: string): Promise<void>;
   resetBudgetSpent(id: string): Promise<void>;
+
+  // API Keys
+  getApiKeyByKey(key: string): Promise<ApiKey | undefined>;
+  getApiKeysByOrg(orgId: string): Promise<ApiKey[]>;
+  createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
 }
 
 export class DbStorage implements IStorage {
@@ -285,6 +291,21 @@ export class DbStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(budgets.id, id));
+  }
+
+  // API Keys
+  async getApiKeyByKey(key: string): Promise<ApiKey | undefined> {
+    const [apiKey] = await db.select().from(apiKeys).where(eq(apiKeys.key, key));
+    return apiKey;
+  }
+
+  async getApiKeysByOrg(orgId: string): Promise<ApiKey[]> {
+    return db.select().from(apiKeys).where(eq(apiKeys.orgId, orgId));
+  }
+
+  async createApiKey(insertApiKey: InsertApiKey): Promise<ApiKey> {
+    const [apiKey] = await db.insert(apiKeys).values(insertApiKey).returning();
+    return apiKey;
   }
 }
 

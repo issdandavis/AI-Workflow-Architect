@@ -1,12 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { hashPassword, verifyPassword, requireAuth, attachUser } from "./auth";
+import { hashPassword, verifyPassword, requireAuth, attachUser, validateApiKey } from "./auth";
 import { authLimiter, apiLimiter, agentLimiter } from "./middleware/rateLimiter";
 import { checkBudget } from "./middleware/costGovernor";
 import { orchestratorQueue } from "./services/orchestrator";
 import { z } from "zod";
 import { insertUserSchema, insertOrgSchema, insertProjectSchema, insertIntegrationSchema, insertMemoryItemSchema } from "@shared/schema";
+import crypto from "crypto";
 
 const VERSION = "1.0.0";
 
@@ -437,7 +438,31 @@ export async function registerRoutes(
 
   // ===== ZAPIER INTEGRATION ROUTES =====
 
-  app.post("/api/zapier/trigger", async (req: Request, res: Response) => {
+  app.post("/api/zapier/apikey/generate", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const orgId = req.session.orgId;
+      if (!orgId) {
+        return res.status(400).json({ error: "No organization set" });
+      }
+
+      const key = crypto.randomBytes(32).toString("hex");
+      const apiKey = await storage.createApiKey({
+        orgId,
+        key,
+        name: "Zapier",
+      });
+
+      res.json({
+        key,
+        keyId: apiKey.id,
+        message: "Copy this key to Zapier settings in x-api-key header",
+      });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.post("/api/zapier/trigger", validateApiKey, async (req: Request, res: Response) => {
     try {
       const { projectId, goal, provider, model, zapierData } = z.object({
         projectId: z.string(),
@@ -447,8 +472,9 @@ export async function registerRoutes(
         zapierData: z.any().optional(),
       }).parse(req.body);
 
+      const orgId = (req as any).orgId;
       const project = await storage.getProject(projectId);
-      if (!project) {
+      if (!project || project.orgId !== orgId) {
         return res.status(404).json({ error: "Project not found" });
       }
 
@@ -466,7 +492,7 @@ export async function registerRoutes(
       orchestratorQueue.enqueue({
         runId: agentRun.id,
         projectId,
-        orgId: project.orgId,
+        orgId,
         goal,
         mode: "zapier",
       });
@@ -484,7 +510,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/zapier/status/:runId", async (req: Request, res: Response) => {
+  app.get("/api/zapier/status/:runId", validateApiKey, async (req: Request, res: Response) => {
     try {
       const { runId } = req.params;
       const agentRun = await storage.getAgentRun(runId);

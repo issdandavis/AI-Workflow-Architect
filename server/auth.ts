@@ -55,3 +55,19 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
   }
   next();
 }
+
+// Middleware to validate API key
+export async function validateApiKey(req: Request, res: Response, next: NextFunction) {
+  const apiKey = req.headers["x-api-key"] as string;
+  if (!apiKey) {
+    return res.status(401).json({ error: "API key required. Use x-api-key header." });
+  }
+
+  const keyRecord = await storage.getApiKeyByKey(apiKey);
+  if (!keyRecord) {
+    return res.status(401).json({ error: "Invalid API key" });
+  }
+
+  (req as any).orgId = keyRecord.orgId;
+  next();
+}
