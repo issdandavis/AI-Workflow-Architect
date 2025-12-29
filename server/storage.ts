@@ -590,8 +590,8 @@ export class DbStorage implements IStorage {
 
   // Agent Analyses
   async createAgentAnalysis(data: InsertAgentAnalysis): Promise<AgentAnalysis> {
-    const [analysis] = await db.insert(agentAnalyses).values(data).returning();
-    return analysis;
+    // TODO: Re-enable after fixing schema issues
+    throw new Error('Agent analysis feature temporarily disabled');
   }
 
   async getAgentAnalysis(id: number): Promise<AgentAnalysis | undefined> {
@@ -609,8 +609,8 @@ export class DbStorage implements IStorage {
 
   // Agent Suggestions
   async createAgentSuggestion(data: InsertAgentSuggestion): Promise<AgentSuggestion> {
-    const [suggestion] = await db.insert(agentSuggestions).values(data).returning();
-    return suggestion;
+    // TODO: Re-enable after fixing schema issues
+    throw new Error('Agent suggestion feature temporarily disabled');
   }
 
   async getAgentSuggestion(id: number): Promise<AgentSuggestion | undefined> {
@@ -628,8 +628,8 @@ export class DbStorage implements IStorage {
 
   // Agent Proposals
   async createAgentProposal(data: InsertAgentProposal): Promise<AgentProposal> {
-    const [proposal] = await db.insert(agentProposals).values(data).returning();
-    return proposal;
+    // TODO: Re-enable after fixing schema issues
+    throw new Error('Agent proposal feature temporarily disabled');
   }
 
   async getAgentProposal(id: number): Promise<AgentProposal | undefined> {

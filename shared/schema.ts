@@ -343,9 +343,20 @@ export const agentAnalyses = pgTable("agent_analyses", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Temporarily disabled - schema issues with auto-generated IDs
+/*
 export const insertAgentAnalysisSchema = createInsertSchema(agentAnalyses).omit({
   id: true,
   createdAt: true,
+});
+*/
+export const insertAgentAnalysisSchema = z.object({
+  orgId: z.string(),
+  projectId: z.string().nullable().optional(),
+  userId: z.string(),
+  filePath: z.string(),
+  content: z.string(),
+  analysisResult: z.any().optional(),
 });
 
 export type InsertAgentAnalysis = z.infer<typeof insertAgentAnalysisSchema>;
@@ -363,9 +374,20 @@ export const agentSuggestions = pgTable("agent_suggestions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Temporarily disabled - schema issues with auto-generated IDs
+/*
 export const insertAgentSuggestionSchema = createInsertSchema(agentSuggestions).omit({
   id: true,
   createdAt: true,
+});
+*/
+export const insertAgentSuggestionSchema = z.object({
+  analysisId: z.number(),
+  provider: z.string(),
+  model: z.string(),
+  prompt: z.string(),
+  suggestions: z.any(),
+  diffPreview: z.string().nullable().optional(),
 });
 
 export type InsertAgentSuggestion = z.infer<typeof insertAgentSuggestionSchema>;
@@ -383,9 +405,20 @@ export const agentProposals = pgTable("agent_proposals", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Temporarily disabled - schema issues with auto-generated IDs
+/*
 export const insertAgentProposalSchema = createInsertSchema(agentProposals).omit({
   id: true,
   createdAt: true,
+});
+*/
+export const insertAgentProposalSchema = z.object({
+  suggestionId: z.number().nullable().optional(),
+  filePath: z.string(),
+  originalContent: z.string(),
+  proposedContent: z.string(),
+  status: z.enum(["pending", "approved", "rejected", "applied"]).optional(),
+  approvedBy: z.string().nullable().optional(),
 });
 
 export type InsertAgentProposal = z.infer<typeof insertAgentProposalSchema>;

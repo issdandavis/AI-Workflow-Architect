@@ -66,8 +66,10 @@ export const SUPPORTED_PROVIDERS: ProviderConfig[] = [
   { name: "anthropic", label: "Anthropic", keyPrefix: "sk-ant-" },
   { name: "perplexity", label: "Perplexity", keyPrefix: "pplx-" },
   { name: "xai", label: "xAI / Grok", keyPrefix: "xai-" },
-  { name: "github", label: "GitHub", keyPrefix: "ghp_" },
   { name: "google", label: "Google AI", keyPrefix: "AI" },
+  { name: "groq", label: "Groq", keyPrefix: "gsk-" },
+  { name: "huggingface", label: "HuggingFace", keyPrefix: "hf_" },
+  { name: "github", label: "GitHub", keyPrefix: "ghp_" },
 ];
 
 export async function storeUserCredential(

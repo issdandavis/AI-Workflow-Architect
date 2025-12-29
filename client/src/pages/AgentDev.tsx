@@ -89,6 +89,9 @@ interface Proposal {
 }
 
 const PROVIDERS = [
+  { id: "free", name: "Free Demo", model: "demo" },
+  { id: "groq", name: "Groq (Free)", model: "llama-3.1-70b-versatile" },
+  { id: "huggingface", name: "HuggingFace (Free)", model: "microsoft/DialoGPT-medium" },
   { id: "openai", name: "OpenAI", model: "gpt-4o" },
   { id: "anthropic", name: "Anthropic", model: "claude-sonnet-4-20250514" },
   { id: "xai", name: "xAI (Grok)", model: "grok-2" },

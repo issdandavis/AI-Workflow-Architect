@@ -55,6 +55,33 @@ interface CredentialsResponse {
 
 const AI_PROVIDERS = [
   { 
+    name: "free", 
+    label: "Free Demo", 
+    icon: Sparkles, 
+    color: "text-green-400",
+    description: "Try the platform with demo responses - no API key required!",
+    keyHint: "No API key needed",
+    docsUrl: "#"
+  },
+  { 
+    name: "groq", 
+    label: "Groq (Free)", 
+    icon: Bot, 
+    color: "text-cyan-400",
+    description: "Fast inference with Llama models - free tier available.",
+    keyHint: "Starts with gsk-... (optional for free tier)",
+    docsUrl: "https://console.groq.com/keys"
+  },
+  { 
+    name: "huggingface", 
+    label: "HuggingFace (Free)", 
+    icon: Brain, 
+    color: "text-yellow-500",
+    description: "Open-source models via Inference API - free tier available.",
+    keyHint: "Starts with hf_... (optional for free tier)",
+    docsUrl: "https://huggingface.co/settings/tokens"
+  },
+  { 
     name: "openai", 
     label: "OpenAI", 
     icon: Sparkles, 

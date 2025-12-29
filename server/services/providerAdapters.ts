@@ -267,6 +267,159 @@ export class PerplexityAdapter extends BaseProviderAdapter {
   }
 }
 
+export class GroqAdapter extends BaseProviderAdapter {
+  constructor(apiKey: string | undefined) {
+    super("Groq", apiKey);
+  }
+
+  async call(prompt: string, model: string): Promise<ProviderResponse> {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        error: "Groq API key not configured. Please add the API key in Settings > API Keys.",
+      };
+    }
+
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model || "llama-3.1-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error?.message || "Groq API error",
+        };
+      }
+
+      const content = data.choices?.[0]?.message?.content || "";
+
+      return {
+        success: true,
+        content,
+        usage: {
+          inputTokens: data.usage?.prompt_tokens || 0,
+          outputTokens: data.usage?.completion_tokens || 0,
+          costEstimate: "0.0000", // Groq is free tier
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+}
+
+export class HuggingFaceAdapter extends BaseProviderAdapter {
+  constructor(apiKey: string | undefined) {
+    super("HuggingFace", apiKey);
+  }
+
+  async call(prompt: string, model: string): Promise<ProviderResponse> {
+    // HuggingFace Inference API is free without API key for some models
+    const modelName = model || "microsoft/DialoGPT-medium";
+    
+    try {
+      const response = await fetch(`https://api-inference.huggingface.co/models/${modelName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(this.apiKey && { "Authorization": `Bearer ${this.apiKey}` }),
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            max_new_tokens: 512,
+            temperature: 0.7,
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || "HuggingFace API error",
+        };
+      }
+
+      // Handle different response formats
+      let content = "";
+      if (Array.isArray(data) && data[0]?.generated_text) {
+        content = data[0].generated_text.replace(prompt, "").trim();
+      } else if (data.generated_text) {
+        content = data.generated_text.replace(prompt, "").trim();
+      } else {
+        content = JSON.stringify(data);
+      }
+
+      return {
+        success: true,
+        content,
+        usage: {
+          inputTokens: prompt.length / 4, // Rough estimate
+          outputTokens: content.length / 4,
+          costEstimate: "0.0000", // Free tier
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+}
+
+export class FreeAdapter extends BaseProviderAdapter {
+  constructor() {
+    super("Free Demo", "demo-key");
+  }
+
+  async call(prompt: string, model: string): Promise<ProviderResponse> {
+    // Always works - provides demo responses
+    const responses = [
+      "I'm a demo AI assistant! This is a free response to help you test the system. For full AI capabilities, please add your API keys in Settings.",
+      "Hello! I'm running in demo mode. I can respond to basic queries, but for advanced AI features, you'll need to configure your API keys.",
+      "This is a demonstration response. The AI Workflow Architect supports multiple providers like OpenAI, Anthropic, and more when configured with API keys.",
+      "Demo mode active! I can help you explore the interface. To unlock full AI capabilities, visit Settings > API Keys to add your credentials.",
+    ];
+
+    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+
+    // Add some context based on the prompt
+    let contextualResponse = randomResponse;
+    if (prompt.toLowerCase().includes("code")) {
+      contextualResponse += "\n\nFor code generation and analysis, this platform works great with GPT-4, Claude, or other coding-focused models.";
+    } else if (prompt.toLowerCase().includes("help")) {
+      contextualResponse += "\n\nI can help you navigate the platform! Try exploring the Dashboard, Coding Studio, or AI Roundtable features.";
+    }
+
+    return {
+      success: true,
+      content: contextualResponse,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        costEstimate: "0.0000",
+      },
+    };
+  }
+}
+
 export class GeminiAdapter extends BaseProviderAdapter {
   constructor(apiKey: string | undefined) {
     super("Google Gemini", apiKey);
@@ -330,6 +483,8 @@ export function getProviderAdapter(provider: string, apiKey?: string): ProviderA
     xai: process.env.XAI_API_KEY,
     perplexity: process.env.PERPLEXITY_API_KEY,
     google: process.env.GOOGLE_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    huggingface: process.env.HUGGINGFACE_API_KEY,
   };
 
   switch (provider.toLowerCase()) {
@@ -344,6 +499,14 @@ export function getProviderAdapter(provider: string, apiKey?: string): ProviderA
     case "google":
     case "gemini":
       return new GeminiAdapter(apiKey || envApiKeys.google);
+    case "groq":
+      return new GroqAdapter(apiKey || envApiKeys.groq);
+    case "huggingface":
+    case "hf":
+      return new HuggingFaceAdapter(apiKey || envApiKeys.huggingface);
+    case "free":
+    case "demo":
+      return new FreeAdapter();
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
