@@ -29,7 +29,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the application (Vite client + esbuild server)
-RUN npm run build
+RUN npm run build 2>&1 || (echo "Build failed, checking for errors..." && cat /app/package.json && exit 1)
 
 # ============================================
 # Stage 3: Production
