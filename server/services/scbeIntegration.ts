@@ -1,14 +1,19 @@
 /**
  * SCBE-AETHERMOORE Integration Layer
  *
- * Connects AI Workflow Architect to the 13-layer SCBE security stack:
+ * Connects AI Workflow Architect to the 14-layer SCBE security stack:
  * - H(d,R) = R^(d²) harmonic scaling for risk amplification
  * - Six Sacred Tongues semantic encoding
  * - Hyperbolic geometry (Poincaré ball) for access control
  * - Layer 7 Roundtable governance for multi-signature authorization
+ * - AWS Lambda API for full pipeline evaluation
  */
 
 import crypto from 'crypto';
+
+// SCBE AWS API Configuration
+const SCBE_API_URL = process.env.SCBE_API_URL || 'https://f34g13dok4.execute-api.us-west-2.amazonaws.com/production';
+const PHYSICS_TRAP_API = process.env.PHYSICS_TRAP_API || 'https://ldrsy9yqs7.execute-api.us-west-2.amazonaws.com/';
 
 // AETHERMOORE Constants (from official spec)
 const PHI_AETHER = 1.3782407725;
@@ -243,6 +248,166 @@ export function scbeMiddleware(minTier: GovernanceTier = 1) {
   };
 }
 
+/**
+ * Call SCBE AWS Lambda API for full 14-layer security evaluation
+ * Returns decision: ALLOW, QUARANTINE, or DENY
+ */
+export interface SCBEApiRequest {
+  agentId: string;
+  action: string;
+  payload?: unknown;
+  position?: number[];
+}
+
+export interface SCBEApiResponse {
+  decision: 'ALLOW' | 'QUARANTINE' | 'DENY';
+  risk_score: number;
+  harmonic_factor: number;
+  layer_results: {
+    layer: number;
+    name: string;
+    passed: boolean;
+    value?: number;
+  }[];
+  governance_required?: {
+    tier: GovernanceTier;
+    tongues: SacredTongue[];
+  };
+  trap_activated?: boolean;
+  reason: string;
+}
+
+export async function evaluateWithSCBEApi(request: SCBEApiRequest): Promise<SCBEApiResponse> {
+  try {
+    const response = await fetch(`${SCBE_API_URL}/v1/authorize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Agent-ID': request.agentId,
+        'X-Action': request.action,
+      },
+      body: JSON.stringify({
+        agent_id: request.agentId,
+        action: request.action,
+        payload: request.payload || {},
+        position: request.position,
+        timestamp: Date.now(),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`SCBE API error: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    // Fallback to local evaluation if API unavailable
+    console.warn('SCBE API unavailable, using local evaluation:', error);
+
+    const localResult = evaluateSecurity({
+      userId: request.agentId,
+      operation: request.action,
+      metadata: request.payload as Record<string, unknown>,
+    });
+
+    return {
+      decision: localResult.allowed ? 'ALLOW' : 'DENY',
+      risk_score: 1 - (1 / localResult.amplification),
+      harmonic_factor: localResult.amplification,
+      layer_results: [],
+      reason: `Local evaluation: ${localResult.securityLevel}`,
+    };
+  }
+}
+
+/**
+ * Activate physics trap for denied requests (attackers)
+ */
+export async function activatePhysicsTrap(riskScore: number): Promise<void> {
+  try {
+    const hostility = Math.min(10, 1 + riskScore * 9);
+
+    await fetch(PHYSICS_TRAP_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        simulation_type: riskScore > 0.9 ? 'relativity' : riskScore > 0.8 ? 'quantum' : 'thermodynamics',
+        parameters: {
+          gravity_multiplier: hostility * 2,
+          time_dilation: 1 / hostility,
+          entropy_injection: hostility * 0.5,
+          turbulence_factor: hostility * 3,
+        },
+        trap_mode: true,
+      }),
+    });
+  } catch {
+    // Trap activation is best-effort, don't fail main flow
+  }
+}
+
+/**
+ * Enhanced middleware that uses AWS API for full 14-layer evaluation
+ */
+export function scbeApiMiddleware(minTier: GovernanceTier = 1) {
+  return async (req: any, res: any, next: any) => {
+    const request: SCBEApiRequest = {
+      agentId: req.user?.id || req.headers['x-agent-id'] || 'anonymous',
+      action: `${req.method}:${req.path}`,
+      payload: req.body,
+    };
+
+    try {
+      const result = await evaluateWithSCBEApi(request);
+
+      if (result.decision === 'DENY') {
+        // Activate physics trap for attackers
+        if (result.trap_activated) {
+          activatePhysicsTrap(result.risk_score);
+        }
+
+        return res.status(403).json({
+          error: 'Access Denied by SCBE',
+          decision: result.decision,
+          reason: result.reason,
+          harmonic_factor: result.harmonic_factor,
+        });
+      }
+
+      if (result.decision === 'QUARANTINE') {
+        return res.status(202).json({
+          status: 'pending',
+          decision: result.decision,
+          reason: result.reason,
+          governance_required: result.governance_required,
+        });
+      }
+
+      // ALLOW - attach result and proceed
+      req.scbe = result;
+      next();
+    } catch (error) {
+      // On error, fall back to local evaluation
+      const localResult = evaluateSecurity({
+        userId: request.agentId,
+        operation: request.action,
+      });
+
+      if (localResult.governanceTier < minTier) {
+        return res.status(403).json({
+          error: 'Insufficient security clearance',
+          required: `Tier ${minTier}`,
+          current: `Tier ${localResult.governanceTier}`,
+        });
+      }
+
+      req.scbe = localResult;
+      next();
+    }
+  };
+}
+
 export default {
   harmonicScaling,
   getSecurityLevel,
@@ -252,10 +417,15 @@ export default {
   getRequiredTongues,
   evaluateGovernance,
   evaluateSecurity,
+  evaluateWithSCBEApi,
+  activatePhysicsTrap,
   scbeMiddleware,
+  scbeApiMiddleware,
   SACRED_TONGUES,
   PHI_AETHER,
   LAMBDA_ISAAC,
   OMEGA_SPIRAL,
-  ALPHA_ABH
+  ALPHA_ABH,
+  SCBE_API_URL,
+  PHYSICS_TRAP_API,
 };

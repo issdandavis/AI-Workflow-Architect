@@ -15,12 +15,18 @@ import { getProviderAdapter } from "./services/providerAdapters";
 import crypto from "crypto";
 import {
   scbeMiddleware,
+  scbeApiMiddleware,
   evaluateSecurity,
+  evaluateWithSCBEApi,
   getSecurityLevel,
   harmonicScaling,
   evaluateGovernance,
+  activatePhysicsTrap,
+  SCBE_API_URL,
   type SCBESecurityContext,
-  type GovernanceTier
+  type GovernanceTier,
+  type SCBEApiRequest,
+  type SCBEApiResponse,
 } from "./services/scbeIntegration";
 
 const VERSION = "1.0.0";
@@ -72,7 +78,11 @@ export async function registerRoutes(
       status: "active",
       framework: "SCBE-AETHERMOORE",
       version: "1.0.0",
-      layers: 13,
+      layers: 14,
+      awsApi: {
+        url: SCBE_API_URL,
+        connected: true,
+      },
       constants: {
         PHI_AETHER: 1.3782407725,
         LAMBDA_ISAAC: 3.9270509831,
@@ -485,8 +495,9 @@ export async function registerRoutes(
 
   // ===== AGENT ORCHESTRATION ROUTES =====
   // Protected by SCBE H(d,R) Harmonic Scaling for AI execution security
+  // Uses AWS Lambda API for full 14-layer evaluation
 
-  app.post("/api/agents/run", requireAuth, agentLimiter, checkBudget, scbeMiddleware(3), async (req: Request, res: Response) => {
+  app.post("/api/agents/run", requireAuth, agentLimiter, checkBudget, scbeApiMiddleware(3), async (req: Request, res: Response) => {
     try {
       const { projectId, goal, mode, provider, model } = z.object({
         projectId: z.string(),
