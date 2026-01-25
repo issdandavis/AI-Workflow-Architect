@@ -13,6 +13,15 @@ import { z } from "zod";
 import { insertUserSchema, insertOrgSchema, insertProjectSchema, insertIntegrationSchema, insertMemoryItemSchema } from "@shared/schema";
 import { getProviderAdapter } from "./services/providerAdapters";
 import crypto from "crypto";
+import {
+  scbeMiddleware,
+  evaluateSecurity,
+  getSecurityLevel,
+  harmonicScaling,
+  evaluateGovernance,
+  type SCBESecurityContext,
+  type GovernanceTier
+} from "./services/scbeIntegration";
 
 const VERSION = "1.0.0";
 
@@ -45,6 +54,85 @@ export async function registerRoutes(
       time: new Date().toISOString(),
       version: VERSION,
     });
+  });
+
+  // ===== SCBE SECURITY STATUS ENDPOINT =====
+  // Exposes SCBE-AETHERMOORE security layer status
+  app.get("/api/scbe/status", requireAuth, apiLimiter, (req: Request, res: Response) => {
+    const userId = req.session.userId || "anonymous";
+
+    // Calculate security amplification levels
+    const securityLevels = [1, 2, 3, 4, 5, 6].map(d => ({
+      distance: d,
+      amplification: harmonicScaling(d),
+      level: getSecurityLevel(d).level,
+    }));
+
+    res.json({
+      status: "active",
+      framework: "SCBE-AETHERMOORE",
+      version: "1.0.0",
+      layers: 13,
+      constants: {
+        PHI_AETHER: 1.3782407725,
+        LAMBDA_ISAAC: 3.9270509831,
+        OMEGA_SPIRAL: 1.4832588477,
+        ALPHA_ABH: 3.1180339887,
+        R_PERFECT_FIFTH: 1.5,
+      },
+      sacredTongues: ["ko", "av", "ru", "ca", "um", "dr"],
+      governanceTiers: {
+        1: "Low - Single tongue (read operations)",
+        2: "Medium - Dual tongues (state changes)",
+        3: "High - Triple tongues (security-sensitive)",
+        4: "Critical - Quad tongues (irreversible)",
+      },
+      harmonicScaling: securityLevels,
+      currentUser: {
+        id: userId,
+        securityContext: evaluateSecurity({
+          userId,
+          operation: "read:status",
+        }),
+      },
+    });
+  });
+
+  // SCBE Security evaluation endpoint
+  app.post("/api/scbe/evaluate", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+    try {
+      const { operation, resourceId, metadata } = z.object({
+        operation: z.string(),
+        resourceId: z.string().optional(),
+        metadata: z.record(z.unknown()).optional(),
+      }).parse(req.body);
+
+      const context: SCBESecurityContext = {
+        userId: req.session.userId || "anonymous",
+        operation,
+        resourceId,
+        metadata,
+      };
+
+      const result = evaluateSecurity(context);
+
+      await storage.createAuditLog({
+        orgId: req.session.orgId!,
+        userId: req.session.userId || null,
+        action: "scbe_security_evaluation",
+        target: operation,
+        detailJson: {
+          resourceId,
+          securityLevel: result.securityLevel,
+          amplification: result.amplification,
+          governanceTier: result.governanceTier,
+        },
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid request" });
+    }
   });
 
   // ===== AUTH ROUTES =====
@@ -247,8 +335,9 @@ export async function registerRoutes(
   });
 
   // ===== CREDENTIAL VAULT ROUTES =====
+  // Protected by SCBE - Handles sensitive API credentials
 
-  app.get("/api/vault/credentials", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+  app.get("/api/vault/credentials", requireAuth, apiLimiter, scbeMiddleware(1), async (req: Request, res: Response) => {
     try {
       const userId = req.session.userId;
       if (!userId) {
@@ -267,7 +356,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/vault/credentials", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+  app.post("/api/vault/credentials", requireAuth, apiLimiter, scbeMiddleware(2), async (req: Request, res: Response) => {
     try {
       const { provider, apiKey, label } = z.object({
         provider: z.string(),
@@ -309,7 +398,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/vault/credentials/:id", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+  app.delete("/api/vault/credentials/:id", requireAuth, apiLimiter, scbeMiddleware(2), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const userId = req.session.userId;
@@ -395,8 +484,9 @@ export async function registerRoutes(
   });
 
   // ===== AGENT ORCHESTRATION ROUTES =====
+  // Protected by SCBE H(d,R) Harmonic Scaling for AI execution security
 
-  app.post("/api/agents/run", requireAuth, agentLimiter, checkBudget, async (req: Request, res: Response) => {
+  app.post("/api/agents/run", requireAuth, agentLimiter, checkBudget, scbeMiddleware(3), async (req: Request, res: Response) => {
     try {
       const { projectId, goal, mode, provider, model } = z.object({
         projectId: z.string(),
@@ -1668,9 +1758,10 @@ export async function registerRoutes(
   });
 
   // ===== ROUNDTABLE ROUTES =====
+  // Protected by SCBE Layer 7 Governance - Multi-AI collaboration requires elevated security
 
   // Get available AI providers
-  app.get("/api/roundtable/providers", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+  app.get("/api/roundtable/providers", requireAuth, apiLimiter, scbeMiddleware(1), async (req: Request, res: Response) => {
     try {
       const { AI_CONFIGS } = await import("./services/roundtableCoordinator");
       const providers = Object.entries(AI_CONFIGS).map(([id, config]) => ({
@@ -1685,8 +1776,8 @@ export async function registerRoutes(
     }
   });
 
-  // Create a new roundtable session
-  app.post("/api/roundtable/sessions", requireAuth, apiLimiter, async (req: Request, res: Response) => {
+  // Create a new roundtable session - SCBE Tier 2: State-changing operation
+  app.post("/api/roundtable/sessions", requireAuth, apiLimiter, scbeMiddleware(2), async (req: Request, res: Response) => {
     try {
       const orgId = req.session.orgId;
       if (!orgId) {
@@ -1824,8 +1915,8 @@ export async function registerRoutes(
     }
   });
 
-  // Trigger a single AI's turn
-  app.post("/api/roundtable/sessions/:id/ai-turn", requireAuth, agentLimiter, async (req: Request, res: Response) => {
+  // Trigger a single AI's turn - SCBE Tier 3: Security-sensitive AI execution
+  app.post("/api/roundtable/sessions/:id/ai-turn", requireAuth, agentLimiter, scbeMiddleware(3), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { provider } = z.object({
@@ -1859,8 +1950,8 @@ export async function registerRoutes(
     }
   });
 
-  // Run a full round of all active AIs
-  app.post("/api/roundtable/sessions/:id/round", requireAuth, agentLimiter, async (req: Request, res: Response) => {
+  // Run a full round of all active AIs - SCBE Tier 3: Multi-AI execution
+  app.post("/api/roundtable/sessions/:id/round", requireAuth, agentLimiter, scbeMiddleware(3), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
 
