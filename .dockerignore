@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Build output (we rebuild in Docker)
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (secrets should be passed via docker-compose)
+.env
+.env.local
+.env.*.local
+
+# Replit specific
+.replit
+.replit.nix
+replit.nix
+.cache
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__
+coverage
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Attached assets (not needed in production)
+attached_assets
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
