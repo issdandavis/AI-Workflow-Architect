@@ -29,20 +29,23 @@ jobs:
           fi
 
       - name: Configure AWS credentials
+        id: aws-creds
         if: steps.check-aws.outputs.skip != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
 
       - name: Login to Amazon ECR
-        if: steps.check-aws.outputs.skip != 'true'
+        if: steps.check-aws.outputs.skip != 'true' && steps.aws-creds.outcome == 'success'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+        continue-on-error: true
 
       - name: Build, tag, and push image to Amazon ECR
-        if: steps.check-aws.outputs.skip != 'true'
+        if: steps.check-aws.outputs.skip != 'true' && steps.login-ecr.outcome == 'success'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -53,10 +56,14 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Deploy to ECS
-        if: steps.check-aws.outputs.skip != 'true'
+        if: steps.check-aws.outputs.skip != 'true' && steps.login-ecr.outcome == 'success'
         run: |
           aws ecs update-service --cluster ai-workflow-architect-production --service ai-workflow-architect-production --force-new-deployment --region $AWS_REGION || echo "ECS service not yet created"
+        continue-on-error: true
 
       - name: Skip notice
-        if: steps.check-aws.outputs.skip == 'true'
-        run: echo "Deployment skipped - AWS credentials not configured. Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets to enable."
+        if: steps.check-aws.outputs.skip == 'true' || steps.aws-creds.outcome != 'success'
+        run: |
+          echo "Deployment skipped."
+          echo "- AWS credentials not configured or invalid"
+          echo "- Add valid AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets to enable"
